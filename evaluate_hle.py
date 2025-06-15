@@ -1,5 +1,7 @@
 import json
 import re
+from datasets import load_dataset
+import config  # Import our configuration file
 
 def get_multiple_choice_answer(text: str) -> str | None:
     """Extracts a single uppercase letter, assumed to be the answer for MCQs.
@@ -32,29 +34,74 @@ def get_multiple_choice_answer(text: str) -> str | None:
 
     return None
 
-def evaluate_hle(results_filepath: str, ground_truth_filepath: str):
+def evaluate_hle(results_filepath: str = None):
     """Evaluates Humanity's Last Exam benchmark results."""
-    print(f"Starting HLE evaluation for: {results_filepath} using ground truth: {ground_truth_filepath}")
+    # Use config defaults if not provided
+    results_filepath = results_filepath or config.HLE_RESULTS_FILE
+    
+    print(f"Starting HLE evaluation for: {results_filepath}")
 
-    # Load the ground truth data
+    # Load the ground truth data from Hugging Face
     ground_truth = {}
     try:
-        with open(ground_truth_filepath, 'r', encoding='utf-8') as f:
-            for line_num, line in enumerate(f, 1):
-                try:
-                    data = json.loads(line)
-                    if 'question' in data and 'answer' in data and 'question_type' in data:
-                        ground_truth[data['question']] = {
-                            'answer': data['answer'],
-                            'type': data['question_type']
+        # Load HLE dataset from Hugging Face with token if provided
+        if config.HF_TOKEN and config.HF_TOKEN != "YOUR_HF_TOKEN":
+            dataset = load_dataset("cais/hle", split="test", token=config.HF_TOKEN)
+        else:
+            dataset = load_dataset("cais/hle", split="test")
+        print("Loading HLE ground truth from Hugging Face...")
+        
+        # Handle both IterableDataset and regular Dataset
+        if hasattr(dataset, '__iter__') and not hasattr(dataset, '__len__'):
+            # IterableDataset - iterate directly
+            for item in dataset:
+                if 'question' in item and 'answer' in item and 'question_type' in item:
+                    ground_truth[item['question']] = {
+                        'answer': item['answer'],
+                        'type': item['question_type']
+                    }
+                else:
+                    print(f"Warning: Skipping HLE ground truth item due to missing fields: {item}")
+        else:
+            # Regular Dataset - use indexing
+            try:
+                dataset_length = len(dataset)
+                for i in range(dataset_length):
+                    item = dataset[i]
+                    if 'question' in item and 'answer' in item and 'question_type' in item:
+                        ground_truth[item['question']] = {
+                            'answer': item['answer'],
+                            'type': item['question_type']
                         }
                     else:
-                        print(f"Warning: Skipping HLE ground truth line {line_num} due to missing fields: {line.strip()}")
-                except json.JSONDecodeError:
-                    print(f"Warning: Skipping invalid JSON in HLE ground truth line {line_num}: {line.strip()}")
-        print(f"Loaded {len(ground_truth)} ground truth HLE questions from {ground_truth_filepath}.")
-    except FileNotFoundError:
-        print(f"Error: HLE ground truth file not found: {ground_truth_filepath}. Please ensure you have cloned the HLE repository and the path is correct.")
+                        print(f"Warning: Skipping HLE ground truth item due to missing fields: {item}")
+            except (TypeError, AttributeError):
+                # Fallback if len() doesn't work - treat as iterable
+                for item in dataset:
+                    if 'question' in item and 'answer' in item and 'question_type' in item:
+                        ground_truth[item['question']] = {
+                            'answer': item['answer'],
+                            'type': item['question_type']
+                        }
+                    else:
+                        print(f"Warning: Skipping HLE ground truth item due to missing fields: {item}")
+        
+        print(f"Loaded {len(ground_truth)} ground truth HLE questions from Hugging Face.")
+    except Exception as e:
+        if "gated dataset" in str(e) or "authenticated" in str(e):
+            print(f"Error: HLE dataset access denied. The HLE dataset on Hugging Face is gated and requires authentication.")
+            print("To access HLE dataset:")
+            print("1. Create a Hugging Face account at https://huggingface.co/")
+            print("2. Request access to the dataset at https://huggingface.co/datasets/cais/hle")
+            print("3. Get your token from https://huggingface.co/settings/tokens")
+            print("4. Add your token to config.py: HF_TOKEN = 'your_token_here'")
+        elif "Pillow" in str(e) or "PIL" in str(e):
+            print(f"Error: Missing required dependency for image processing.")
+            print("The HLE dataset contains multimodal questions that require image processing.")
+            print("Please install Pillow: pip install pillow")
+            print("Then try running the evaluation again.")
+        else:
+            print(f"Error loading HLE dataset from Hugging Face: {e}. Please ensure 'datasets' library is installed and you have internet connectivity.")
         return
 
     if not ground_truth:
@@ -152,10 +199,10 @@ def evaluate_hle(results_filepath: str, ground_truth_filepath: str):
 
 
 if __name__ == "__main__":
-    # This assumes hle_results.json is in the same directory
-    # and the HLE data is in 'hle/data/hle_test_set.jsonl'
-    results_file = "hle_results.json"
-    # Path to HLE data as specified in run_my_agent.py and user guide
-    ground_truth_file = "hle/data/hle_test_set.jsonl"
-
-    evaluate_hle(results_file, ground_truth_file)
+    # Use config file for default filenames
+    try:
+        import config
+    except ImportError:
+        print("Error: config.py not found. Make sure config.py is in the same directory as this script.")
+    else:
+        evaluate_hle()
