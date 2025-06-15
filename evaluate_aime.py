@@ -1,6 +1,7 @@
 import json
 import re
 from datasets import load_dataset
+import SunFlowerAI.config as config  # Import our configuration file
 
 def parse_integer_answer(text: str) -> int | None:
     """Extracts an integer from the model's response.
@@ -26,41 +27,66 @@ def parse_integer_answer(text: str) -> int | None:
             return None
     return None
 
-def evaluate_aime(results_filepath: str, ground_truth_dataset_name: str = "opencompass/AIME2025", ground_truth_split: str = "test"):
+def evaluate_aime(results_filepath: str = None, ground_truth_dataset_name: str = None, ground_truth_split: str = "test"):
     """Evaluates AIME benchmark results."""
+    # Use config defaults if not provided
+    results_filepath = results_filepath or config.AIME_RESULTS_FILE
+    ground_truth_dataset_name = ground_truth_dataset_name or config.AIME_DATASET_NAME
+    
     print(f"Starting AIME evaluation for: {results_filepath}")
 
-    # Load the ground truth answers
+    # Load the ground truth answers from both AIME datasets
     ground_truth = {}
     try:
-        dataset = load_dataset(ground_truth_dataset_name, "default", split=ground_truth_split)
+        # Load both AIME datasets using config
+        all_datasets = []
+        for config_name in config.AIME_CONFIGS:
+            dataset = load_dataset(ground_truth_dataset_name, config_name, split=ground_truth_split)
+            all_datasets.append((config_name, dataset))
         
-        # Handle both IterableDataset and regular Dataset
-        if hasattr(dataset, '__iter__') and not hasattr(dataset, '__getitem__'):
-            # IterableDataset - iterate directly
-            for item in dataset:
-                if 'question' in item and 'answer' in item:
-                    # Ensure answer is an int for comparison
-                    try:
-                        ground_truth[item['question']] = int(item['answer'])
-                    except (ValueError, TypeError):
-                        print(f"Warning: Could not parse ground truth answer for question: {item['question'][:50]}... Answer: {item['answer']}")
-                else:
-                    print(f"Warning: Skipping ground truth item due to missing 'question' or 'answer': {item}")
-        else:
-            # Regular Dataset - use indexing
-            for i in range(len(dataset)):
-                item = dataset[i]
-                if 'question' in item and 'answer' in item:
-                    # Ensure answer is an int for comparison
-                    try:
-                        ground_truth[item['question']] = int(item['answer'])
-                    except (ValueError, TypeError):
-                        print(f"Warning: Could not parse ground truth answer for question: {item['question'][:50]}... Answer: {item['answer']}")
-                else:
-                    print(f"Warning: Skipping ground truth item due to missing 'question' or 'answer': {item}")
+        # Process both datasets
+        for dataset_name, dataset in all_datasets:
+            print(f"Loading ground truth from {dataset_name}...")
+            
+            # Handle both IterableDataset and regular Dataset
+            if hasattr(dataset, '__iter__') and not hasattr(dataset, '__len__'):
+                # IterableDataset - iterate directly
+                for item in dataset:
+                    if 'question' in item and 'answer' in item:
+                        # Ensure answer is an int for comparison
+                        try:
+                            ground_truth[item['question']] = int(item['answer'])
+                        except (ValueError, TypeError):
+                            print(f"Warning: Could not parse ground truth answer for question: {item['question'][:50]}... Answer: {item['answer']}")
+                    else:
+                        print(f"Warning: Skipping ground truth item due to missing 'question' or 'answer': {item}")
+            else:
+                # Regular Dataset - use indexing with proper error handling
+                try:
+                    dataset_length = len(dataset)
+                    for i in range(dataset_length):
+                        item = dataset[i]
+                        if 'question' in item and 'answer' in item:
+                            # Ensure answer is an int for comparison
+                            try:
+                                ground_truth[item['question']] = int(item['answer'])
+                            except (ValueError, TypeError):
+                                print(f"Warning: Could not parse ground truth answer for question: {item['question'][:50]}... Answer: {item['answer']}")
+                        else:
+                            print(f"Warning: Skipping ground truth item due to missing 'question' or 'answer': {item}")
+                except (TypeError, AttributeError):
+                    # Fallback if len() doesn't work - treat as iterable
+                    for item in dataset:
+                        if 'question' in item and 'answer' in item:
+                            # Ensure answer is an int for comparison
+                            try:
+                                ground_truth[item['question']] = int(item['answer'])
+                            except (ValueError, TypeError):
+                                print(f"Warning: Could not parse ground truth answer for question: {item['question'][:50]}... Answer: {item['answer']}")
+                        else:
+                            print(f"Warning: Skipping ground truth item due to missing 'question' or 'answer': {item}")
         
-        print(f"Loaded {len(ground_truth)} ground truth AIME questions.")
+        print(f"Loaded {len(ground_truth)} ground truth AIME questions total.")
     except Exception as e:
         print(f"Error loading AIME ground truth dataset '{ground_truth_dataset_name}': {e}. Please ensure 'datasets' is installed and you have internet access.")
         return
@@ -130,8 +156,11 @@ if __name__ == "__main__":
     # Ensure necessary libraries are installed
     try:
         import datasets
+        import SunFlowerAI.config as config
     except ImportError as e:
         print(f"ImportError: {e}. Please install the required libraries. You might need to run: pip install datasets")
+        if "config" in str(e):
+            print("Also make sure config.py is in the same directory as this script.")
     else:
-        # This assumes aime_results.json is in the same directory as this script
-        evaluate_aime("aime_results.json")
+        # Use config file for default filename
+        evaluate_aime()
