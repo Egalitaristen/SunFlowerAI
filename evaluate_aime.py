@@ -3,7 +3,7 @@ import re
 from datasets import load_dataset
 
 def parse_integer_answer(text: str) -> int | None:
-    """Extracts the an integer from the model's response.
+    """Extracts an integer from the model's response.
     Attempts to find numbers and assumes the last one is the answer.
     AIME answers are integers between 0 and 999.
     """
@@ -34,15 +34,32 @@ def evaluate_aime(results_filepath: str, ground_truth_dataset_name: str = "openc
     ground_truth = {}
     try:
         dataset = load_dataset(ground_truth_dataset_name, "default", split=ground_truth_split)
-        for item in dataset:
-            if 'question' in item and 'answer' in item:
-                # Ensure answer is an int for comparison
-                try:
-                    ground_truth[item['question']] = int(item['answer'])
-                except (ValueError, TypeError):
-                    print(f"Warning: Could not parse ground truth answer for question: {item['question'][:50]}... Answer: {item['answer']}")
-            else:
-                print(f"Warning: Skipping ground truth item due to missing 'question' or 'answer': {item}")
+        
+        # Handle both IterableDataset and regular Dataset
+        if hasattr(dataset, '__iter__') and not hasattr(dataset, '__getitem__'):
+            # IterableDataset - iterate directly
+            for item in dataset:
+                if 'question' in item and 'answer' in item:
+                    # Ensure answer is an int for comparison
+                    try:
+                        ground_truth[item['question']] = int(item['answer'])
+                    except (ValueError, TypeError):
+                        print(f"Warning: Could not parse ground truth answer for question: {item['question'][:50]}... Answer: {item['answer']}")
+                else:
+                    print(f"Warning: Skipping ground truth item due to missing 'question' or 'answer': {item}")
+        else:
+            # Regular Dataset - use indexing
+            for i in range(len(dataset)):
+                item = dataset[i]
+                if 'question' in item and 'answer' in item:
+                    # Ensure answer is an int for comparison
+                    try:
+                        ground_truth[item['question']] = int(item['answer'])
+                    except (ValueError, TypeError):
+                        print(f"Warning: Could not parse ground truth answer for question: {item['question'][:50]}... Answer: {item['answer']}")
+                else:
+                    print(f"Warning: Skipping ground truth item due to missing 'question' or 'answer': {item}")
+        
         print(f"Loaded {len(ground_truth)} ground truth AIME questions.")
     except Exception as e:
         print(f"Error loading AIME ground truth dataset '{ground_truth_dataset_name}': {e}. Please ensure 'datasets' is installed and you have internet access.")
