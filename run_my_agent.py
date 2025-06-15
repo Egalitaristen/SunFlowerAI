@@ -3,6 +3,7 @@ import json
 from typing import List, Dict, Tuple # Retained Dict and Tuple for general utility, though not directly in this snippet
 from dataclasses import dataclass
 import time
+import argparse # Added for command-line arguments
 from groq import AsyncGroq
 from datasets import load_dataset # Added for AIME
 
@@ -138,12 +139,15 @@ class DynamicPromptComparison:
 
         print(f"\nResults saved to {filename}")
 
-def load_hle_questions(filepath: str) -> List[str]:
-    """Loads questions from the HLE JSONL file."""
+def load_hle_questions(filepath: str, max_questions: int = None) -> List[str]:
+    """Loads questions from the HLE JSONL file, with an optional limit."""
     questions = []
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
-            for line in f:
+            for i, line in enumerate(f):
+                if max_questions and i >= max_questions:
+                    print(f"Loaded a maximum of {max_questions} questions as requested.")
+                    break
                 try:
                     data = json.loads(line)
                     questions.append(data['question'])
@@ -154,27 +158,53 @@ def load_hle_questions(filepath: str) -> List[str]:
     except FileNotFoundError:
         print(f"Error: HLE questions file not found at {filepath}. Please ensure you have cloned the HLE repository (git clone https://github.com/centerforaisafety/hle.git) and the path is correct.")
         return []
-    print(f"Loaded {len(questions)} questions from HLE file: {filepath}")
+
+    if max_questions and len(questions) == max_questions:
+        # This condition is met if loop broke due to max_questions
+        pass # Message already printed
+    elif max_questions and len(questions) < max_questions:
+         print(f"Loaded {len(questions)} questions from HLE file (less than max_questions limit of {max_questions}): {filepath}")
+    else:
+        print(f"Loaded {len(questions)} questions from HLE file: {filepath}")
     return questions
 
-def load_aime_questions() -> List[str]:
-    """Loads questions from the AIME Hugging Face dataset."""
+def load_aime_questions(max_questions: int = None) -> List[str]:
+    """Loads questions from the AIME Hugging Face dataset, with an optional limit."""
     questions = []
     try:
         dataset = load_dataset("opencompass/AIME2025", "default")
         # Ensure 'question' field exists and handle potential errors
-        for item in dataset['test']:
+        for i, item in enumerate(dataset['test']):
+            if max_questions and i >= max_questions:
+                print(f"Loaded a maximum of {max_questions} questions as requested.")
+                break
             if 'question' in item and isinstance(item['question'], str):
                 questions.append(item['question'])
             else:
                 print(f"Warning: Skipping AIME item due to missing or invalid 'question' field: {item}")
-        print(f"Loaded {len(questions)} questions from AIME dataset.")
+
+        if max_questions and len(questions) == max_questions:
+            pass # Message already printed
+        elif max_questions and len(questions) < max_questions:
+            print(f"Loaded {len(questions)} questions from AIME dataset (less than max_questions limit of {max_questions}).")
+        else:
+            print(f"Loaded {len(questions)} questions from AIME dataset.")
+
     except Exception as e:
         print(f"Error loading AIME dataset: {e}. Please ensure 'datasets' library is installed and you have internet connectivity.")
         return []
     return questions
 
 async def main():
+    parser = argparse.ArgumentParser(description="Run dynamic prompt comparison with Groq API on HLE or AIME benchmarks.")
+    parser.add_argument(
+        "--max_questions",
+        type=int,
+        default=None,
+        help="Maximum number of questions to process from the benchmark."
+    )
+    args = parser.parse_args()
+
     # IMPORTANT: Replace with your actual Groq API key
     api_key = "YOUR_GROQ_API_KEY"
 
@@ -200,10 +230,10 @@ async def main():
         # Assumes HLE data is in a subdirectory 'hle/data/' relative to this script
         # User needs to clone it: git clone https://github.com/centerforaisafety/hle.git
         hle_data_path = "hle/data/hle_test_set.jsonl" # Path as suggested in issue
-        test_inputs = load_hle_questions(hle_data_path)
+        test_inputs = load_hle_questions(hle_data_path, max_questions=args.max_questions)
         output_filename = "hle_results.json"
     elif benchmark_name == "AIME":
-        test_inputs = load_aime_questions()
+        test_inputs = load_aime_questions(max_questions=args.max_questions)
         output_filename = "aime_results.json"
     else:
         print(f"Error: Invalid benchmark name '{benchmark_name}'. Choose 'HLE' or 'AIME'.")
@@ -213,7 +243,9 @@ async def main():
         print(f"No questions loaded for benchmark {benchmark_name}. Exiting.")
         return
 
-    print(f"Starting benchmark: {benchmark_name} with {len(test_inputs)} questions.")
+    num_questions_to_process = len(test_inputs)
+    print(f"Starting benchmark: {benchmark_name} with {num_questions_to_process} questions.")
+
     results = await comparison.compare_batch(test_inputs)
 
     # Save results
