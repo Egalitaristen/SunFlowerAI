@@ -1,11 +1,11 @@
 import asyncio
 import json
-from typing import List, Dict, Tuple # Retained Dict and Tuple for general utility, though not directly in this snippet
+from typing import List, Dict, Tuple
 from dataclasses import dataclass
 import time
-import argparse # Added for command-line arguments
+import argparse
 from groq import AsyncGroq
-from datasets import load_dataset # Added for AIME
+from datasets import load_dataset
 
 @dataclass
 class ComparisonResult:
@@ -15,14 +15,14 @@ class ComparisonResult:
     prompted_response: str
 
 class DynamicPromptComparison:
-    def __init__(self, api_key: str, model: str = "meta-llama/llama-4-scout-17b-16e-instruct",
+    def __init__(self, api_key: str, model: str = "llama3-8b-8192",
                  rate_limit_delay: float = 0.5):
         """
         Initialize with Groq API client
 
         Args:
             api_key: Groq API key
-            model: Model name to use
+            model: Model name to use (default: llama3-8b-8192)
             rate_limit_delay: Delay between API calls in seconds
         """
         self.client = AsyncGroq(api_key=api_key)
@@ -139,7 +139,7 @@ class DynamicPromptComparison:
 
         print(f"\nResults saved to {filename}")
 
-def load_hle_questions(filepath: str, max_questions: int = None) -> List[str]:
+def load_hle_questions(filepath: str, max_questions: int | None = None) -> List[str]:
     """Loads questions from the HLE JSONL file, with an optional limit."""
     questions = []
     try:
@@ -168,20 +168,34 @@ def load_hle_questions(filepath: str, max_questions: int = None) -> List[str]:
         print(f"Loaded {len(questions)} questions from HLE file: {filepath}")
     return questions
 
-def load_aime_questions(max_questions: int = None) -> List[str]:
+def load_aime_questions(max_questions: int | None = None) -> List[str]:
     """Loads questions from the AIME Hugging Face dataset, with an optional limit."""
     questions = []
     try:
-        dataset = load_dataset("opencompass/AIME2025", "default")
-        # Ensure 'question' field exists and handle potential errors
-        for i, item in enumerate(dataset['test']):
-            if max_questions and i >= max_questions:
-                print(f"Loaded a maximum of {max_questions} questions as requested.")
-                break
-            if 'question' in item and isinstance(item['question'], str):
-                questions.append(item['question'])
-            else:
-                print(f"Warning: Skipping AIME item due to missing or invalid 'question' field: {item}")
+        dataset = load_dataset("opencompass/AIME2025", "default", split="test")
+        
+        # Handle both IterableDataset and regular Dataset
+        if hasattr(dataset, '__iter__') and not hasattr(dataset, '__getitem__'):
+            # IterableDataset - iterate directly
+            for i, item in enumerate(dataset):
+                if max_questions and i >= max_questions:
+                    print(f"Loaded a maximum of {max_questions} questions as requested.")
+                    break
+                if 'question' in item and isinstance(item['question'], str):
+                    questions.append(item['question'])
+                else:
+                    print(f"Warning: Skipping AIME item due to missing or invalid 'question' field: {item}")
+        else:
+            # Regular Dataset - use indexing
+            total_items = len(dataset) if hasattr(dataset, '__len__') else float('inf')
+            max_to_process = min(max_questions or total_items, total_items)
+            
+            for i in range(int(max_to_process)):
+                item = dataset[i]
+                if 'question' in item and isinstance(item['question'], str):
+                    questions.append(item['question'])
+                else:
+                    print(f"Warning: Skipping AIME item due to missing or invalid 'question' field: {item}")
 
         if max_questions and len(questions) == max_questions:
             pass # Message already printed
@@ -198,7 +212,7 @@ def load_aime_questions(max_questions: int = None) -> List[str]:
 async def main():
     parser = argparse.ArgumentParser(description="Run dynamic prompt comparison with Groq API on HLE or AIME benchmarks.")
     parser.add_argument(
-        "--max_questions",
+        "--max_questions",  # Fixed: using underscore to match the variable name
         type=int,
         default=None,
         help="Maximum number of questions to process from the benchmark."
@@ -214,7 +228,7 @@ async def main():
 
     comparison = DynamicPromptComparison(
         api_key=api_key,
-        model="llama3-8b-8192", # Suggesting a more recent model if available, else keep original
+        model="llama3-8b-8192",  # Consistent model choice
         rate_limit_delay=0.5  # Adjust as needed for rate limits
     )
 
