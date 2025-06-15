@@ -6,7 +6,7 @@ This section describes how to use the provided scripts to benchmark an AI agent 
 
 ### 1. Prerequisites
 
-*   **Python 3.8+**
+*   **Python 3.10+** (Python 3.11+ recommended for best compatibility)
 *   **Groq API Key**: You need an API key from Groq. Get yours at [https://console.groq.com/keys](https://console.groq.com/keys).
 *   **Git**: Required for cloning the HLE repository.
 
@@ -72,24 +72,25 @@ api_key = "YOUR_GROQ_API_KEY"
 
 **a. Running the Agent to Generate Responses (`run_my_agent.py`):**
 
-The `run_my_agent.py` script will process the questions from the chosen benchmark, query the Groq API, and save the results (including the input question, direct response, generated system prompt, and prompted response) to a JSON file.
+The `run_my_agent.py` script will process the questions from the chosen benchmark, query the Groq API using the **llama3-8b-8192** model, and save the results (including the input question, direct response, generated system prompt, and prompted response) to a JSON file.
 
 *   **To run for AIME 2025:**
 
-    Make sure the `benchmark_name` variable in `run_my_agent.py` is set to `"AIME"` (this is often the default):
+    Make sure the `benchmark_name` variable in `run_my_agent.py` is set to `"AIME"` (this is the default):
 
     ```python
     # In run_my_agent.py, ensure this line is set for AIME:
     benchmark_name = "AIME"
     ```
 
-    Then, run the script. You can use the optional `--max-questions` argument to limit the number of questions processed, which is useful for a quick test:
+    Then, run the script. You can use the optional `--max_questions` argument to limit the number of questions processed, which is useful for a quick test:
 
     ```bash
     # To run on all AIME questions:
-    # python run_my_agent.py
+    python run_my_agent.py
+    
     # To run on a subset (e.g., first 10 questions):
-    python run_my_agent.py --max-questions 10
+    python run_my_agent.py --max_questions 10
     ```
 
     This will create `aime_results.json`.
@@ -103,13 +104,14 @@ The `run_my_agent.py` script will process the questions from the chosen benchmar
     benchmark_name = "HLE"
     ```
 
-    Then, run the script. You can use the optional `--max-questions` argument:
+    Then, run the script. You can use the optional `--max_questions` argument:
 
     ```bash
     # To run on all HLE questions:
-    # python run_my_agent.py
+    python run_my_agent.py
+    
     # To run on a subset (e.g., first 5 questions):
-    python run_my_agent.py --max-questions 5
+    python run_my_agent.py --max_questions 5
     ```
 
     This will create `hle_results.json`. It expects the HLE data to be in the `hle/data/hle_test_set.jsonl` path relative to the script.
@@ -140,7 +142,23 @@ After generating the results files, use the corresponding evaluation scripts.
 
 ### Important Notes
 
+*   **Model Consistency**: All scripts now use the **llama3-8b-8192** model consistently for fair comparison across benchmarks.
 *   **API Rate Limits**: The `run_my_agent.py` script has a `rate_limit_delay` parameter in the `DynamicPromptComparison` class. If you encounter rate limiting issues with the Groq API, you might need to increase this delay.
-*   **Model Selection**: You can change the model used by the Groq API by modifying the `model` parameter in the `DynamicPromptComparison` class within `run_my_agent.py`.
 *   **Error Handling**: The scripts include basic error handling. Check the console output for any warnings or errors during execution.
 *   **HLE Data Path**: If you clone the HLE repository to a different location than the project root, you will need to update the `hle_data_path` in `run_my_agent.py` and `ground_truth_file` in `evaluate_hle.py`.
+*   **Python Version**: These scripts are optimized for Python 3.11+ and use modern type annotations (`str | None` syntax).
+
+### Command Line Arguments
+
+The `run_my_agent.py` script accepts the following command line arguments:
+
+- `--max_questions`: Limit the number of questions to process (useful for testing)
+
+Example usage:
+```bash
+# Process only 5 questions for quick testing
+python run_my_agent.py --max_questions 5
+
+# Process all questions (default behavior)
+python run_my_agent.py
+```
